@@ -50,3 +50,6 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+/jpeg12dec.js
+/jpeg12dec.wasm

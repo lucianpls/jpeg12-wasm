@@ -1,0 +1,15 @@
+rm -f *.o
+
+for file in jpeg12-6b/*.c
+do
+    echo $file
+    emcc -O3 -c $file
+done
+
+EXPORTS=_malloc,_free
+METHODS=[cwrap,UTF8ToString]
+PARAMS="-O3 -sNO_EXIT_RUNTIME=1 --no-entry\
+-sEXPORTED_FUNCTIONS=$EXPORTS\
+-sEXPORTED_RUNTIME_METHODS=$METHODS"
+emcc $PARAMS -o jpeg12dec.js *.o
+rm -f *.o
