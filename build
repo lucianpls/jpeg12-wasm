@@ -1,13 +1,14 @@
 rm -f *.o
 
+OPTIONS="-O3 -flto"
 for file in jpeg12-6b/*.c
 do
     echo $file
-    emcc -O3 -c $file
+    emcc $OPTIONS -c $file
 done
 
 echo jpeg12api.cpp
-emcc -O2 -c jpeg12api.cpp
+emcc $OPTIONS -c jpeg12api.cpp
 
 echo Building jpeg12dec
 
@@ -15,11 +16,11 @@ EXPORTS=_malloc,_free
 
 METHODS=[cwrap,UTF8ToString,writeArrayToMemory]
 
-PARAMS="-O3 -sNO_EXIT_RUNTIME=1 --no-entry\
+PARAMS="-sNO_EXIT_RUNTIME=1 --no-entry\
  -Wshift-negative-value\
  -sEXPORTED_FUNCTIONS=$EXPORTS\
  -sEXPORTED_RUNTIME_METHODS=$METHODS"
-echo emcc $PARAMS -o jpeg12dec.js *.o
-emcc $PARAMS -o jpeg12dec.js *.o
+echo emcc $OPTIONS $PARAMS -o jpeg12dec.js *.o
+emcc $OPTIONS $PARAMS -o jpeg12dec.js *.o
 
 rm -f *.o
