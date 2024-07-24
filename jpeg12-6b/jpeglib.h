@@ -56,6 +56,7 @@
 #ifndef D_MAX_BLOCKS_IN_MCU
 #define D_MAX_BLOCKS_IN_MCU   10 /* decompressor's limit on blocks per MCU */
 #endif
+#define AVOID_TABLES	/* avoid some clang warnings */
 
 
 /* Data structures for images (arrays of samples and of DCT coefficients).

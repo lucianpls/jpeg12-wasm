@@ -6,10 +6,20 @@ do
     emcc -O3 -c $file
 done
 
+echo jpeg12api.cpp
+emcc -O2 -c jpeg12api.cpp
+
+echo Building jpeg12dec
+
 EXPORTS=_malloc,_free
-METHODS=[cwrap,UTF8ToString]
+
+METHODS=[cwrap,UTF8ToString,writeArrayToMemory]
+
 PARAMS="-O3 -sNO_EXIT_RUNTIME=1 --no-entry\
--sEXPORTED_FUNCTIONS=$EXPORTS\
--sEXPORTED_RUNTIME_METHODS=$METHODS"
+ -Wshift-negative-value\
+ -sEXPORTED_FUNCTIONS=$EXPORTS\
+ -sEXPORTED_RUNTIME_METHODS=$METHODS"
+echo emcc $PARAMS -o jpeg12dec.js *.o
 emcc $PARAMS -o jpeg12dec.js *.o
+
 rm -f *.o
