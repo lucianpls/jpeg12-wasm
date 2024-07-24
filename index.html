@@ -34,7 +34,7 @@
     </div>
 
     <label for="level">Level:</label>
-    <input type="number" id="Level" name="level" value="0" min="0" max="20">
+    <input type="number" id="Level" name="level" value="0" min="0" max="17">
     <label for="row">Row:</label>
     <input type="number" id="Row" name="row" value="0" min="0" max="0">
     <label for="row">Column:</label>
@@ -46,6 +46,7 @@
         displayZone = {
           canvas: undefined,
           ctx: undefined,
+          zoom: 0,
           imageData: undefined
         };
 
@@ -84,7 +85,7 @@
         JPEG12.onRuntimeInitialized = () => {
 
             console.log("Started");
-            document.getElementById("Level").addEventListener("input", refresh);
+            document.getElementById("Level").addEventListener("input", zoom);
             document.getElementById("Row").addEventListener("input", refresh);
             document.getElementById("Column").addEventListener("input", refresh);
             refresh();
@@ -144,6 +145,30 @@
 
         }
 
+        // 
+        async function zoom() {
+          if (!displayZone.ctx)
+            return;
+          let level = document.getElementById('Level').value;
+          let oldZoom = displayZone.zoom;
+          displayZone.zoom = level;
+          let zoom_factor = 2 ** (level - oldZoom);
+          // Adjust the row and column values
+          let rowInput = document.getElementById('Row');
+          let columnInput = document.getElementById('Column');
+          rowInput.value = Math.floor(rowInput.value * zoom_factor);
+          columnInput.value = Math.floor(columnInput.value * zoom_factor);
+          return refresh();
+        }
+
+        async function scramble() {
+          let rowInput = document.getElementById('Row');
+          let columnInput = document.getElementById('Column');
+          rowInput.value = Math.floor(Math.random() * rowInput.max);
+          columnInput.value = Math.floor(Math.random() * columnInput.max);
+          refresh();
+        }
+
         async function refresh() {
           try {
             // Sample JPEG12 tile
@@ -161,7 +186,18 @@
             let row = rowInput.value;
             let column = columnInput.value;
             url += "tile/" + level + "/" + row + "/" + column;
-            let result = await fetch(url);
+            let result = undefined;
+            try {
+              result = await fetch(url);
+            } catch (e) {
+              console.log(e.message);
+              scramble();
+              return;
+            }
+            // If we got an error, no point in decoding
+            if (!result.ok)
+              return scrabmle();
+
             let data = await result.arrayBuffer();
             data = new Uint8Array(data);
             // image = JPEG12.getInfo(data);
@@ -179,6 +215,11 @@
               if (vmax < image.data[i])
                 vmax = image.data[i];
             }
+            
+            // autopan until we get something
+            if (vmin == vmax)
+              return scramble();
+
             console.log(`Min ${vmin} Max ${vmax}`);
             image.min = vmin;
             image.max = vmax;
