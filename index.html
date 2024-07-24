@@ -33,13 +33,13 @@
     <div id="image-container">
     </div>
 
-    <!-- <label for="level">Level:</label>
+    <label for="level">Level:</label>
     <input type="number" id="Level" name="level" value="0" min="0" max="20">
     <label for="row">Row:</label>
     <input type="number" id="Row" name="row" value="0" min="0" max="0">
     <label for="row">Column:</label>
     <input type="number" id="Column" name="column" value="0" min="0" max="0">
- -->
+
     <script>
         let JPEG12 = Module;
 
@@ -58,7 +58,7 @@
             console.log(`Expecting 1 component, 12 bits per pixel, got ${image.num_components} components, ${image.data_precision} bits per pixel`);
             return;
           }
-          
+
           if (!displayZone.ctx) {
             let canvas = document.createElement('canvas');
             displayZone.canvas = canvas;
@@ -84,6 +84,11 @@
         JPEG12.onRuntimeInitialized = () => {
 
             console.log("Started");
+            document.getElementById("Level").addEventListener("input", refresh);
+            document.getElementById("Row").addEventListener("input", refresh);
+            document.getElementById("Column").addEventListener("input", refresh);
+            refresh();
+
             // buffer, size => json string, could be error message
             JPEG12.getinfo = JPEG12.cwrap('getinfo', 'number', ['number', 'number']);
 
@@ -137,13 +142,25 @@
               return image;
             }
 
-            refresh();
         }
 
         async function refresh() {
           try {
             // Sample JPEG12 tile
-            let url = "0";
+            // let url = "0";
+            
+            let url = "http://astro.arcgis.com/arcgis/rest/services/OnMars/HiRISE/raw/"
+            let rowInput = document.getElementById('Row');
+            let columnInput = document.getElementById('Column');
+            let level = document.getElementById('Level').value;
+            let maxval = 2 ** level - 1;
+            if (rowInput.max != maxval)
+              rowInput.max = maxval;
+            if (columnInput.max != maxval)
+              columnInput.max = maxval;
+            let row = rowInput.value;
+            let column = columnInput.value;
+            url += "tile/" + level + "/" + row + "/" + column;
             let result = await fetch(url);
             let data = await result.arrayBuffer();
             data = new Uint8Array(data);
