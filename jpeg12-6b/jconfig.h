@@ -60,6 +60,11 @@
 /* Define this if you get warnings about undefined structures. */
 #undef INCOMPLETE_TYPES_BROKEN
 
+// This makes it 15% faster in the browser (x86-64), should be on by default
+#define AVOID_TABLES	/* avoid some clang warnings */
+// Faster than JDCT_ISLOW, almost as fast as JDCT_IFAST and accurate
+#define JDCT_DEFAULT JDCT_FLOAT
+
 #ifdef JPEG_INTERNALS
 
 #undef RIGHT_SHIFT_IS_UNSIGNED

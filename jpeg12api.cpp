@@ -255,6 +255,10 @@ char *decode(uint8_t *jpeg12, size_t size, uint16_t *output, size_t outsize) {
         return strdup(j.dump().c_str());
     }
 
+    // Use DCT_FLOAT, just in case it's not the default
+    // It is faster than JDCT_ISLOW and almost as fast as JDCT_IFAST
+    cinfo.dct_method = JDCT_FLOAT;
+
     // It worked, get and return the info
     jpeg_start_decompress(&cinfo);
     JSAMPLE *rp[2]; // Two lines is what JPEG does
