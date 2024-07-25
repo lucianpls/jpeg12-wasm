@@ -51,5 +51,6 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
+.vscode
 /jpeg12dec.js
 /jpeg12dec.wasm
