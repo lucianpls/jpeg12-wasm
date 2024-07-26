@@ -4,6 +4,9 @@
 #include <cstring>
 
 #include "json.hpp"
+#define PACKER
+#include "BitMask2D.h"
+#include "Packer_RLE.h"
 
 extern "C" {
 #include "jpeg12-6b/jpeglib.h"
@@ -133,8 +136,8 @@ char *getinfo(uint8_t *data, uint32_t size) {
     json j = {
         {"width", info.width},
         {"height", info.height},
-        {"num_components", info.num_components},
-        {"data_precision", info.data_precision},
+        {"numComponents", info.num_components},
+        {"dataPrecision", info.data_precision},
     };
 
     return strdup(j.dump().c_str());
@@ -144,6 +147,10 @@ char *getinfo(uint8_t *data, uint32_t size) {
 struct JPG12Handle {
     jmp_buf setjmp_buffer;
     char *message;
+    struct {
+        JOCTET *buffer;
+        size_t size;
+    } zenChunk;
 };
 
 static void emitMessage(j_common_ptr cinfo, int msg_level) {
@@ -175,10 +182,124 @@ static void skip_input_data_dec(j_decompress_ptr cinfo, long num_bytes) {
     }
 }
 
+// This might need to return TRUE, not needed when the 
+// whole jpeg is in the buffer
 static boolean fill_input_buffer_dec(j_decompress_ptr cinfo) {
     return FALSE;
 }
 
+//
+// JPEG marker processor, for the Zen app3 marker
+// Can't return error, only works if the Zen chunk is fully in buffer
+// Since this decoder has the whole JPEG in memory, we can just store a pointer
+//
+#define CHUNK_NAME "Zen"
+#define CHUNK_NAME_SIZE 4
+
+// Save the chunk pointer, otherwise it's a skip_input_data,
+static boolean zenChunkHandler(j_decompress_ptr cinfo) {
+    struct jpeg_source_mgr *src = cinfo->src;
+    if (src->bytes_in_buffer < 2)
+        ERREXIT(cinfo, JERR_CANT_SUSPEND);
+
+    // 16 bit, big endian chunk length
+    int len = (*src->next_input_byte++) << 8;
+    len += *src->next_input_byte++;
+    // The length includes the two bytes we just read
+    src->bytes_in_buffer -= 2;
+    len -= 2;
+    // Check that it is safe to read the rest
+    if (src->bytes_in_buffer < static_cast<size_t>(len))
+        ERREXIT(cinfo, JERR_CANT_SUSPEND);
+
+    // filter out chunks that have the wrong signature, just skip them
+    if (strcmp(reinterpret_cast<const char *>(src->next_input_byte), "Zen")) {
+        src->bytes_in_buffer -= len;
+        src->next_input_byte += len;
+        return true;
+    }
+
+    // Skip the signature and keep a direct chunk pointer
+    src->bytes_in_buffer -= CHUNK_NAME_SIZE;
+    src->next_input_byte += CHUNK_NAME_SIZE;
+    len -= static_cast<int>(CHUNK_NAME_SIZE);
+
+    auto jh = reinterpret_cast<JPG12Handle *>(cinfo->client_data);
+    // Store a pointer to the Zen chunk in the handler
+    jh->zenChunk.buffer = const_cast<JOCTET *>(src->next_input_byte);
+    jh->zenChunk.size = len;
+
+    src->bytes_in_buffer -= len;
+    src->next_input_byte += len;
+    return true;
+}
+
+// Apply the mask to the buffer, in place
+// Needs to know the number of channels since the mask is per pixel
+template <typename T> static void apply_mask(BitMap2D<uint64_t> &mask, T *s, int nc)
+{
+    int w = mask.getWidth();
+    int h = mask.getHeight();
+
+    if (nc == 1) {
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                if (mask.isSet(x, y))
+                { // Non zero pixel
+                    if (*s == 0)
+                        *s = 1;
+                }
+                else
+                { // Zero pixel
+                    if (*s != 0)
+                        *s = 0;
+                }
+                s++;
+            }
+        return;
+    }
+
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+        {
+            if (mask.isSet(x, y))
+            { // Non zero pixel
+                for (int c = 0; c < nc; c++, s++)
+                {
+                    if (*s == 0)
+                        *s = 1;
+                }
+            }
+            else
+            { // Zero pixel
+                for (int c = 0; c < nc; c++)
+                    *s++ = 0;
+            }
+        }
+}
+
+// Decodes and applies the Zen chunk in place
+void applyZenChunk(const jpeginfo &info, const JPG12Handle &handle,uint16_t *output)
+{
+    // Create a BitMask2D object, 64bit unit
+    BitMap2D<uint64_t> bm(info.width, info.height);
+    // Create a RLEC3Packer object
+    RLEC3Packer packer;
+    bm.set_packer(&packer);
+    storage_manager src = {
+        reinterpret_cast<char *>(handle.zenChunk.buffer), 
+        handle.zenChunk.size
+    };
+
+    if (bm.load(&src) != 0) {
+        // Error, just return
+        return;
+    }
+    // Read fine, apply the chunk
+    apply_mask(bm, output, info.num_components);
+
+}
 
 // double macros, so they need to be redefined to use the 12bit version
 #undef jpeg_create_compress
@@ -207,14 +328,15 @@ char *decode(uint8_t *jpeg12, size_t size, uint16_t *output, size_t outsize) {
             {"error", "Output buffer too small"},
             {"width", info.width},
             {"height", info.height},
-            {"num_components", info.num_components},
-            {"data_precision", info.data_precision},
+            {"numComponents", info.num_components},
+            {"dataPrecision", info.data_precision},
         };
         return strdup(j.dump().c_str());
     }
 
     struct jpeg_decompress_struct cinfo;
     JPG12Handle handle;
+    handle.zenChunk.buffer = nullptr;
     memset(&handle, 0, sizeof(handle));
     jpeg_error_mgr jerr;
     memset(&jerr, 0, sizeof(jerr));
@@ -240,6 +362,9 @@ char *decode(uint8_t *jpeg12, size_t size, uint16_t *output, size_t outsize) {
 
     jpeg_create_decompress(&cinfo);
     cinfo.src = &s;
+    // This is the only marker we are interested in, saves the pointer and size
+    // If present, it does get called in the read_header, before the data is decoded
+    jpeg_set_marker_processor(&cinfo, JPEG_APP0 + 3, zenChunkHandler);
     jpeg_read_header(&cinfo, TRUE);
 
     // Use the message as an error message
@@ -262,20 +387,36 @@ char *decode(uint8_t *jpeg12, size_t size, uint16_t *output, size_t outsize) {
     // It worked, get and return the info
     jpeg_start_decompress(&cinfo);
     JSAMPLE *rp[2]; // Two lines is what JPEG does
+    auto linesize = info.width * info.num_components;
     while (cinfo.output_scanline < cinfo.output_height) {
-        rp[0] = (JSAMPROW)(output + cinfo.output_scanline * info.width * info.num_components);
-        rp[1] = (JSAMPROW)(output + (cinfo.output_scanline + 1) * info.width * info.num_components);
+        rp[0] = (JSAMPROW)(output + cinfo.output_scanline * linesize);
+        rp[1] = (JSAMPROW)(output + (cinfo.output_scanline + 1) * linesize);
         jpeg_read_scanlines(&cinfo, rp, 2);
     }
 
     jpeg_finish_decompress(&cinfo);
     jpeg_destroy_decompress(&cinfo);
+
+    // If the zen chunk is present
+    if (handle.zenChunk.buffer) {
+        if (handle.zenChunk.size > 0) // Not empty
+            applyZenChunk(info, handle, output);
+        else { // present but empty zen chunk, force all values non-zero
+            for (size_t i = 0; i < outsize / 2; i++)
+                if (output[i] == 0)
+                    output[i] = 1;
+        }
+    }
+
     // Done, return the info, no error
     json j = {
         {"width", info.width},
         {"height", info.height},
-        {"num_components", info.num_components},
-        {"data_precision", info.data_precision},
+        {"numComponents", info.num_components},
+        {"dataPrecision", info.data_precision},
     };
+    // Flag the caller that the zen chunk was applied
+    if (handle.zenChunk.buffer)
+        j["zenChunkSize"] = handle.zenChunk.size;
     return strdup(j.dump().c_str());
 }

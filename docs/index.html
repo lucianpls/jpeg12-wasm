@@ -47,6 +47,8 @@
           return JSON.parse(response)
         }
 
+        // if response.error is set, there was an error
+        // if response.zenChunkSize is not set, there was no Zen chunk
         JPEG12.decode = function(data, expect = undefined) {
           let wbuf = this._malloc(data.length);
           this.writeArrayToMemory(data, wbuf);
@@ -55,8 +57,8 @@
           let image = JSON.parse(this.UTF8ToString(cresult));
           this._free(cresult);
           // If we got an error, no point in decoding
-          if (image.error || image.data_precision != 12) {
-            console.log(`Error ${image.error}, JPEG precison ${image.data_precision}`);
+          if (image.error || image.dataPrecision != 12) {
+            console.log(`Error ${image.error}, JPEG precison ${image.dataPrecision}`);
             this._free(wbuf);
             return image;
           }
@@ -64,16 +66,16 @@
           if (expect && (
               image.width != expect.width
               || image.height != expect.height 
-              || image.num_components != expect.num_components)) {
+              || image.numComponents != expect.numComponents)) {
             console.log(`Error: Expected ${expect}, got ${image}`);
             this._free(wbuf);
             return image;
           }
 
-          let outsize = image.width * image.height * image.num_components * 2;
+          let outsize = image.width * image.height * image.numComponents * 2;
           let outbuffer = this._malloc(outsize);
           cresult = this.raw_decode(wbuf, data.length, outbuffer, outsize);
-          response = this.UTF8ToString(cresult);
+          let response = JSON.parse(this.UTF8ToString(cresult));
 
           if (response.error) { // Error decoding
             console.log(response.message);
@@ -82,11 +84,12 @@
             return response;
           }
 
-          data = new Uint16Array(this.HEAPU16.buffer, outbuffer, outsize / 2);
-          image.data = new Uint16Array(data); // copy
+          // view, so we can select the right region
+          let pixels = new Uint16Array(this.HEAPU16.buffer, outbuffer, outsize / 2);
+          response.data = new Uint16Array(pixels); // copy, so we can free the buffer
           this._free(outbuffer);
           this._free(wbuf);
-          return image;
+          return response;
         }
         hiRISELayer.addTo(map);
 

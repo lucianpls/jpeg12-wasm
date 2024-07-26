@@ -45,7 +45,7 @@ var Jpeg12Layer = L.GridLayer.extend({
     if (!tile.raw) return;
     let width = tile.width;
     let height = tile.height;
-    let image = JPEG12.decode(tile.raw, { width: width, height: height, num_components: 1});
+    let image = JPEG12.decode(tile.raw, { width: width, height: height, numComponents: 1});
 
     let min = +slider.noUiSlider.get()[0];
     let max = +slider.noUiSlider.get()[1];

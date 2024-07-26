@@ -50,8 +50,8 @@
           let height = image.height;
 
           // expect 1 component, 12 bits per pixel
-          if (image.num_components != 1 || image.data_precision != 12) {
-            console.log(`Expecting 1 component, 12 bits per pixel, got ${image.num_components} components, ${image.data_precision} bits per pixel`);
+          if (image.numComponents != 1 || image.dataPrecision != 12) {
+            console.log(`Expecting 1 component, 12 bits per pixel, got ${image.numComponents} components, ${image.dataPrecision} bits per pixel`);
             return;
           }
 
@@ -106,14 +106,14 @@
             let image = JSON.parse(this.UTF8ToString(cresult));
             this._free(cresult);
             // If we got an error, no point in decoding
-            if (image.error || image.data_precision != 12) {
-              console.log(`Error ${image.error}, JPEG precison ${image.data_precision}`);
+            if (image.error || image.dataPrecision != 12) {
+              console.log(`Error ${image.error}, JPEG precison ${image.dataPrecision}`);
               this._free(wbuf);
               return image;
             }
 
             // Proceed with the decoding using the raw decode
-            let outsize = image.width * image.height * image.num_components * 2;
+            let outsize = image.width * image.height * image.numComponents * 2;
             let outbuffer = this._malloc(outsize);
             // bench
             let count = 1000;
@@ -127,6 +127,7 @@
             console.log(`Decoding ${count} times took ${took} ms`);
             cresult = this.raw_decode(wbuf, data.length, outbuffer, outsize);
             response = this.UTF8ToString(cresult);
+            console.log(response);
 
             if (response.error) { // Error decoding
               console.log(response.message);

@@ -8,7 +8,7 @@ do
 done
 
 echo jpeg12api.cpp
-emcc $OPTIONS -c jpeg12api.cpp
+emcc $OPTIONS -c jpeg12api.cpp Packer_RLE.cpp
 
 echo Building jpeg12dec
 
