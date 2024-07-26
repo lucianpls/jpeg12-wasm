@@ -1,236 +1,183 @@
-<!doctype html>
-<html lang="en-us">
+﻿<!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset=utf-8 />
+    <title>HiRISE Explorer</title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
 
-<head>
-  <meta charset="utf-8">
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-  <style>
-    body {
-      font-family: Arial;
-      font-weight: bold;
-      text-align: center;
-    }
+    <!-- Load Leaflet from CDN-->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.3.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.3.1/dist/leaflet-src.js"></script>
 
-    #image-container {
-      margin-top: 20px;
-      margin-bottom: 20px;
-    }
+    <!-- load esri leaflet and its geocoder for address/place search -->
+    <script src="https://unpkg.com/esri-leaflet@2.1.3/dist/esri-leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/esri-leaflet-geocoder@2.2.8/dist/esri-leaflet-geocoder.css">
+    <script src="https://unpkg.com/esri-leaflet-geocoder@2.2.8/dist/esri-leaflet-geocoder.js"></script>
 
-    /*
-    .slider {
-      width: 50%;
-    } */
+    <!-- slider library-->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/8.2.1/nouislider.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/8.2.1/nouislider.min.js"></script>
 
-  </style>
-</head>
+    <!--load the lerc decoder -->
+    <script src="https://unpkg.com/lerc@1.0.1/LercDecode.js"></script>
 
-<body>
+    <!--This is the wasm lerc1 decoder-->
     <script src="jpeg12dec.js"></script>
 
-    <h1>JPEG12 decoder test</h1>
-    <h2 id="Test"></h2>
-
-    <div id="image-container">
-    </div>
-
-    <label for="level">Level:</label>
-    <input type="number" id="Level" name="level" value="0" min="0" max="17">
-    <label for="row">Row:</label>
-    <input type="number" id="Row" name="row" value="0" min="0" max="0">
-    <label for="row">Column:</label>
-    <input type="number" id="Column" name="column" value="0" min="0" max="0">
-
+    <!--This should be moved to jpeg12dec.js-->
     <script>
-        let JPEG12 = Module;
+      var JPEG12 = Module;
+      JPEG12.onRuntimeInitialized = () => {
+        // buffer, size => json string, could be error message
+                JPEG12.getinfo = JPEG12.cwrap('getinfo', 'number', ['number', 'number']);
 
-        displayZone = {
-          canvas: undefined,
-          ctx: undefined,
-          zoom: 0,
-          imageData: undefined
-        };
+        // source, sourcesize, dest, destination size -> json string, could be error message
+        JPEG12.raw_decode = JPEG12.cwrap('decode', 'number', ['number', 'number', 'number', 'number']);
 
-        function display(image) {
-          let width = image.width;
-          let height = image.height;
+        // buffer, size => json string, could be error message
+        // JPEG could have large extra chunks before the actual image data
+        JPEG12.getInfo = function(data) {
+          let wbuf = this._malloc(data.length);
+          this.writeArrayToMemory(data, wbuf);
+          cresult = this.getinfo(wbuf, data.length);
+          response = this.UTF8ToString(cresult);
+          console.log(response);
+          this._free(cresult);
+          this._free(wbuf);
+          return JSON.parse(response)
+        }
 
-          // expect 1 component, 12 bits per pixel
-          if (image.num_components != 1 || image.data_precision != 12) {
-            console.log(`Expecting 1 component, 12 bits per pixel, got ${image.num_components} components, ${image.data_precision} bits per pixel`);
-            return;
+        // if response.error is set, there was an error
+        // if response.zenChunkSize is not set, there was no Zen chunk
+        JPEG12.decode = function(data, expect = undefined) {
+          let wbuf = this._malloc(data.length);
+          this.writeArrayToMemory(data, wbuf);
+          // Get the image info, using the raw getinfo
+          let cresult = this.getinfo(wbuf, data.length);
+          let image = JSON.parse(this.UTF8ToString(cresult));
+          this._free(cresult);
+          // If we got an error, no point in decoding
+          if (image.error || image.dataPrecision != 12) {
+            console.log(`Error ${image.error}, JPEG precison ${image.dataPrecision}`);
+            this._free(wbuf);
+            return image;
           }
 
-          if (!displayZone.ctx) {
-            let canvas = document.createElement('canvas');
-            displayZone.canvas = canvas;
-            canvas.width = width;
-            canvas.height = height;
-            document.getElementById('image-container').appendChild(canvas);
-            let ctx = canvas.getContext('2d');
-            displayZone.ctx = ctx;
-            let imageData = ctx.createImageData(width, height);
-            displayZone.imageData = imageData;
+          if (expect && (
+              image.width != expect.width
+              || image.height != expect.height 
+              || image.numComponents != expect.numComponents)) {
+            console.log(`Error: Expected ${expect}, got ${image}`);
+            this._free(wbuf);
+            return image;
           }
 
-          let buffer = new Uint32Array(displayZone.imageData.data.buffer, 0, width * height);
-          let ALPHA = 0xff000000;
-          let scale = 255 / (image.max - image.min);
-          for (let i = 0; i < buffer.length; i++) {
-            let v = ((image.data[i] - image.min) * scale) & 0xff;
-            buffer[i] = (v * 0x10101) | ALPHA;
-          };
-          displayZone.ctx.putImageData(displayZone.imageData, 0, 0);
-        }
+          let outsize = image.width * image.height * image.numComponents * 2;
+          let outbuffer = this._malloc(outsize);
+          cresult = this.raw_decode(wbuf, data.length, outbuffer, outsize);
+          let response = JSON.parse(this.UTF8ToString(cresult));
 
-        JPEG12.onRuntimeInitialized = () => {
-
-            console.log("Started");
-            document.getElementById("Level").addEventListener("input", zoom);
-            document.getElementById("Row").addEventListener("input", refresh);
-            document.getElementById("Column").addEventListener("input", refresh);
-            refresh();
-
-            // buffer, size => json string, could be error message
-            JPEG12.getinfo = JPEG12.cwrap('getinfo', 'number', ['number', 'number']);
-
-            // source, sourcesize, dest, destination size -> json string, could be error message
-            JPEG12.raw_decode = JPEG12.cwrap('decode', 'number', ['number', 'number', 'number', 'number']);
-
-            // buffer, size => json string, could be error message
-            // JPEG could have large extra chunks before the actual image data
-            JPEG12.getInfo = function(data) {
-              let wbuf = this._malloc(data.length);
-              this.writeArrayToMemory(data, wbuf);
-              cresult = this.getinfo(wbuf, data.length);
-              response = this.UTF8ToString(cresult);
-              console.log(response);
-              this._free(cresult);
-              this._free(wbuf);
-              return JSON.parse(response)
-            }
-
-            JPEG12.decode = function(data) {
-              let wbuf = this._malloc(data.length);
-              this.writeArrayToMemory(data, wbuf);
-              // Get the image info, using the raw getinfo
-              let cresult = this.getinfo(wbuf, data.length);
-              let image = JSON.parse(this.UTF8ToString(cresult));
-              this._free(cresult);
-              // If we got an error, no point in decoding
-              if (image.error || image.data_precision != 12) {
-                console.log(`Error ${image.error}, JPEG precison ${image.data_precision}`);
-                this._free(wbuf);
-                return image;
-              }
-
-              // Proceed with the decoding using the raw decode
-              let outsize = image.width * image.height * image.num_components * 2;
-              let outbuffer = this._malloc(outsize);
-              cresult = this.raw_decode(wbuf, data.length, outbuffer, outsize);
-              response = this.UTF8ToString(cresult);
-
-              if (response.error) { // Error decoding
-                console.log(response.message);
-                this._free(wbuf);
-                this._free(outbuffer);
-                return response;
-              }
-              // Make a copy of the array
-              data = new Uint16Array(this.HEAPU16.buffer, outbuffer, outsize / 2);
-              image.data = new Uint16Array(data); // copy
-              this._free(outbuffer);
-              this._free(wbuf);
-              return image;
-            }
-
-        }
-
-        // 
-        async function zoom() {
-          if (!displayZone.ctx)
-            return;
-          let level = document.getElementById('Level').value;
-          let oldZoom = displayZone.zoom;
-          displayZone.zoom = level;
-          let zoom_factor = 2 ** (level - oldZoom);
-          // Adjust the row and column values
-          let rowInput = document.getElementById('Row');
-          let columnInput = document.getElementById('Column');
-          rowInput.value = Math.floor(rowInput.value * zoom_factor);
-          columnInput.value = Math.floor(columnInput.value * zoom_factor);
-          return refresh();
-        }
-
-        async function scramble() {
-          let rowInput = document.getElementById('Row');
-          let columnInput = document.getElementById('Column');
-          rowInput.value = Math.floor(Math.random() * rowInput.max);
-          columnInput.value = Math.floor(Math.random() * columnInput.max);
-          refresh();
-        }
-
-        async function refresh() {
-          try {
-            // Sample JPEG12 tile
-            // let url = "0";
-            
-            let url = "http://astro.arcgis.com/arcgis/rest/services/OnMars/HiRISE/raw/"
-            let rowInput = document.getElementById('Row');
-            let columnInput = document.getElementById('Column');
-            let level = document.getElementById('Level').value;
-            let maxval = 2 ** level - 1;
-            if (rowInput.max != maxval)
-              rowInput.max = maxval;
-            if (columnInput.max != maxval)
-              columnInput.max = maxval;
-            let row = rowInput.value;
-            let column = columnInput.value;
-            url += "tile/" + level + "/" + row + "/" + column;
-            let result = undefined;
-            try {
-              result = await fetch(url);
-            } catch (e) {
-              console.log(e.message);
-              scramble();
-              return;
-            }
-            // If we got an error, no point in decoding
-            if (!result.ok)
-              return scrabmle();
-
-            let data = await result.arrayBuffer();
-            data = new Uint8Array(data);
-            // image = JPEG12.getInfo(data);
-            image = JPEG12.decode(data);
-            // If image.needs_ndv is true, Lerc.decode 
-            // will needs to use the second parameter as no data value
-            if (image.error)
-              throw new Error(image.error);
-
-            // Prove it
-            vmin = vmax = image.data[0]
-            for (i = 0; i < image.data.length; i++) {
-              if (vmin > image.data[i])
-                vmin = image.data[i];
-              if (vmax < image.data[i])
-                vmax = image.data[i];
-            }
-            
-            // autopan until we get something
-            if (vmin == vmax)
-              return scramble();
-
-            console.log(`Min ${vmin} Max ${vmax}`);
-            image.min = vmin;
-            image.max = vmax;
-            display(image);
-
-          } catch (e) {
-            console.log(e.message);
+          if (response.error) { // Error decoding
+            console.log(response.message);
+            this._free(wbuf);
+            this._free(outbuffer);
+            return response;
           }
-        }
 
+          // view, so we can select the right region
+          let pixels = new Uint16Array(this.HEAPU16.buffer, outbuffer, outsize / 2);
+          response.data = new Uint16Array(pixels); // copy, so we can free the buffer
+          this._free(outbuffer);
+          this._free(wbuf);
+          return response;
+        }
+        hiRISELayer.addTo(map);
+
+      }
 
     </script>
-</body>
-</html>
+
+    <!-- load our plugin -->
+    <script src="Jpeg12Layer.js"></script>
+
+    <style>
+      body {
+        margin:0;
+        padding:0;
+      }
+
+      #map {
+        position: absolute;
+        top:0;
+        bottom:0;
+        right:0;left:0;
+      }
+
+      #info-pane {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        min-width: 200px;
+        z-index: 500;
+        padding: 1em;
+        background: white;
+      }
+
+      .noUi-connect {
+        background: #ccc;
+      }
+    </style>
+  </head>
+  <body>
+
+  <div id="map"></div>
+  <div id="info-pane" class="leaflet-bar">
+    <!-- <div id="sungle">
+      <input type="range" min="40" max="140" value="45" class="slider" id="sunAngle" label="Sun Elevation">
+    </div>
+    <label>Sun Elevation Angle</label>
+    <hr> -->
+    <div id="slider"></div>
+    <!-- <br><label id="min">0 meters</label>
+    <br><label id="max">4000 meters</label> -->
+    <hr>
+    <div id="pixel-value">HiRISE Mars Mosaic</div>
+  </div>
+
+  <script>
+    // create a UI slider for the end user to toggle the pixel range to display
+    var slider = document.getElementById('slider');
+    noUiSlider.create(slider, {
+      start: [256, 768],
+      step: 4,
+      connect: true,
+      range: { 'min': 0, 'max': 1023 }
+    });
+
+    
+    // When the slider value changes, update the input and span
+    slider.noUiSlider.on('set', function (values, handle) {
+      hiRISELayer.redraw();
+    });
+
+    let southWest = L.latLng(-90, -179);
+    let northEast = L.latLng(90, 179);
+    let worldBounds = L.latLngBounds(southWest, northEast);
+
+    // set up the map
+    var map = L.map('map', {
+      noWrap: true,
+      minZoom: 2,
+      maxZoom: 17,
+      maxBounds: worldBounds
+    }).setView([30, 45], 3);
+
+    let hiRISELayer = new Jpeg12Layer({
+      noWrap: true,
+      attribution: 'ASU,PDS,NASA</a>',
+      tileSize: 512,
+    });
+
+  </script>
+  </body>
+  </html>
