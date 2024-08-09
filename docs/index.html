@@ -26,7 +26,7 @@
       var JPEG12 = Module;
       JPEG12.onRuntimeInitialized = () => {
         // buffer, size => json string, could be error message
-                JPEG12.getinfo = JPEG12.cwrap('getinfo', 'number', ['number', 'number']);
+        JPEG12.getinfo = JPEG12.cwrap('getinfo', 'number', ['number', 'number']);
 
         // source, sourcesize, dest, destination size -> json string, could be error message
         JPEG12.raw_decode = JPEG12.cwrap('decode', 'number', ['number', 'number', 'number', 'number']);
@@ -88,6 +88,7 @@
           this._free(wbuf);
           return response;
         }
+
         hiRISELayer.addTo(map);
 
       }

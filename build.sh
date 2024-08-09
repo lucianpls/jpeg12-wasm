@@ -8,6 +8,9 @@ do
 done
 
 echo jpeg12api.cpp
+
+# define IGNORE_ZEN_CHUNK when compiling jpeg12api to disable zen chunk processing
+# it makes decoding about 5% faster, but zero values are not stable
 emcc $OPTIONS -c jpeg12api.cpp Packer_RLE.cpp
 
 echo Building jpeg12dec

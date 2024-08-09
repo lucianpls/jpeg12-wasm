@@ -61,8 +61,8 @@ var Jpeg12Layer = L.GridLayer.extend({
     let blue = 0.3;
     for (let i = 0; i < width * height; i++) {
       let c = Math.max(0, Math.min(255, (image.data[i] - min) * scale)) |0;
-      // uintview[i] = ALPHA | 0x10101 * c;
-      uintview[i] = ALPHA | (red * c) | ((green * c) << 8) | ((blue * c) << 16);
+      uintview[i] = ALPHA | 0x10101 * c;
+      // uintview[i] = ALPHA | (red * c) | ((green * c) << 8) | ((blue * c) << 16);
     }
 
     ctx.putImageData(imageData, 0, 0);
