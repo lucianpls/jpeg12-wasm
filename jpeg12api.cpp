@@ -440,7 +440,7 @@ char *decode(uint8_t *jpeg12, size_t size, uint16_t *output, size_t outsize)
         {"dataPrecision", info.data_precision}};
 
 #ifndef IGNORE_ZEN_CHUNK
-    // Flag the caller that the zen chunk was applied
+    // Flag the caller that the zen chunk was detected and processed
     if (handle.zenChunk.buffer)
         j["zenChunkSize"] = handle.zenChunk.size;
     // If the zen chunk is present

@@ -115,6 +115,11 @@
             // Proceed with the decoding using the raw decode
             let outsize = image.width * image.height * image.numComponents * 2;
             let outbuffer = this._malloc(outsize);
+            // Decode a few times, in case there is a JIT
+            for (let i=0; i < 10; i++) {
+              cresult = this.raw_decode(wbuf, data.length, outbuffer, outsize);
+            };
+
             // bench
             let count = 1000;
             let took = performance.now();
