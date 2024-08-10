@@ -311,22 +311,16 @@ static void apply_mask(BitMap2D<uint64_t> &mask, T *s, int nc)
 // Unpacks and applies the Zen chunk in place
 static void applyZenChunk(const jpeginfo &info, const JPG12Handle &handle, uint16_t *output)
 {
-    // Create a BitMask2D object, 64bit unit
     BitMap2D<uint64_t> bm(info.width, info.height);
-    // Create a RLEC3Packer object
     RLEC3Packer packer;
     bm.set_packer(&packer);
     storage_manager src = {
         reinterpret_cast<char *>(handle.zenChunk.buffer),
         handle.zenChunk.size};
 
-    if (bm.load(&src) != 0)
-    {
-        // Error, just return
-        return;
-    }
-    // Read fine, apply the mask
-    apply_mask(bm, output, info.num_components);
+    // load and apply the mask
+    if (bm.load(&src))
+        apply_mask(bm, output, info.num_components);
 }
 
 // These would be double macros, they need to be redefined to use the 12bit version
