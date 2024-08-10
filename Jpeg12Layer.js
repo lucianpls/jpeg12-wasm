@@ -54,15 +54,11 @@ var Jpeg12Layer = L.GridLayer.extend({
     let ctx = tile.getContext('2d');
     let imageData = ctx.createImageData(width, height);
     let uintview = new Uint32Array(imageData.data.buffer, 0, width * height);
-    let scale = 256 / (max - min);
-    let ALPHA = 0xff000000; // Opaque
-    let red = 1;
-    let green = 0.5;
-    let blue = 0.3;
+    const scale = 256 / (max - min);
+    const ALPHA = 0xff000000; // Opaque
     for (let i = 0; i < width * height; i++) {
       let c = Math.max(0, Math.min(255, (image.data[i] - min) * scale)) |0;
       uintview[i] = ALPHA | 0x10101 * c;
-      // uintview[i] = ALPHA | (red * c) | ((green * c) << 8) | ((blue * c) << 16);
     }
 
     ctx.putImageData(imageData, 0, 0);

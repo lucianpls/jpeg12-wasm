@@ -15,182 +15,164 @@
       margin-top: 20px;
       margin-bottom: 20px;
     }
-
-    /*
-    .slider {
-      width: 50%;
-    } */
-
   </style>
 </head>
 
 <body>
-    <script src="jpeg12dec.js"></script>
+  <script src="jpeg12dec.js"></script>
 
-    <h1>JPEG12 decoder test</h1>
-    <h2 id="Test"></h2>
+  <h1>JPEG12 decoder test</h1>
+  <h2 id="Test"></h2>
 
-    <div id="image-container">
-    </div>
-    <hr>
-    <div id="Result"></div>
+  <div id="image-container"></div>
+  <hr>
+  <div id="Result"></div>
 
-    <script>
-        let JPEG12 = Module;
+  <script>
+    let JPEG12 = Module;
 
-        displayZone = {
-          canvas: undefined,
-          ctx: undefined,
-          zoom: 0,
-          imageData: undefined
-        };
+    displayZone = {
+      canvas: undefined,
+      ctx: undefined,
+      zoom: 0,
+      imageData: undefined
+    };
 
-        function display(image) {
-          let width = image.width;
-          let height = image.height;
+    function display(image) {
+      let width = image.width;
+      let height = image.height;
 
-          // expect 1 component, 12 bits per pixel
-          if (image.numComponents != 1 || image.dataPrecision != 12) {
-            console.log(`Expecting 1 component, 12 bits per pixel, got ${image.numComponents} components, ${image.dataPrecision} bits per pixel`);
-            return;
-          }
+      // expect 1 component, 12 bits per pixel
+      if (image.numComponents != 1 || image.dataPrecision != 12) {
+        console.log(`Expecting 1 component, 12 bits per pixel, got ${image.numComponents} components,`
+          + `${image.dataPrecision} bits per pixel`);
+        return;
+      }
 
-          if (!displayZone.ctx) {
-            let canvas = document.createElement('canvas');
-            displayZone.canvas = canvas;
-            canvas.width = width;
-            canvas.height = height;
-            document.getElementById('image-container').appendChild(canvas);
-            let ctx = canvas.getContext('2d');
-            displayZone.ctx = ctx;
-            let imageData = ctx.createImageData(width, height);
-            displayZone.imageData = imageData;
-          }
+      if (!displayZone.ctx) {
+        let canvas = document.createElement('canvas');
+        displayZone.canvas = canvas;
+        canvas.width = width;
+        canvas.height = height;
+        document.getElementById('image-container').appendChild(canvas);
+        let ctx = canvas.getContext('2d');
+        displayZone.ctx = ctx;
+        let imageData = ctx.createImageData(width, height);
+        displayZone.imageData = imageData;
+      }
 
-          let buffer = new Uint32Array(displayZone.imageData.data.buffer, 0, width * height);
-          let ALPHA = 0xff000000;
-          let scale = 255 / (image.max - image.min);
-          for (let i = 0; i < buffer.length; i++) {
-            let v = ((image.data[i] - image.min) * scale) & 0xff;
-            buffer[i] = (v * 0x10101) | ALPHA;
-          };
-          displayZone.ctx.putImageData(displayZone.imageData, 0, 0);
+      let buffer = new Uint32Array(displayZone.imageData.data.buffer, 0, width * height);
+      let ALPHA = 0xff000000;
+      let scale = 255 / (image.max - image.min);
+      for (let i = 0; i < buffer.length; i++) {
+        let v = ((image.data[i] - image.min) * scale) & 0xff;
+        buffer[i] = (v * 0x10101) | ALPHA;
+      };
+      displayZone.ctx.putImageData(displayZone.imageData, 0, 0);
+    }
+
+    JPEG12.onRuntimeInitialized = () => {
+
+      // buffer, size => json string, could be error message
+      JPEG12.getinfo = JPEG12.cwrap('getinfo', 'number', ['number', 'number']);
+
+      // source, sourcesize, dest, destination size -> json string, could be error message
+      JPEG12.raw_decode = JPEG12.cwrap('decode', 'number', ['number', 'number', 'number', 'number']);
+
+      // buffer, size => json string, could be error message
+      // JPEG could have large extra chunks before the actual image data
+      JPEG12.getInfo = function (data) {
+        let wbuf = this._malloc(data.length);
+        this.writeArrayToMemory(data, wbuf);
+        cresult = this.getinfo(wbuf, data.length);
+        response = this.UTF8ToString(cresult);
+        console.log(response);
+        this._free(cresult);
+        this._free(wbuf);
+        return JSON.parse(response);
+      }
+
+      JPEG12.decode = function (data) {
+        let wbuf = this._malloc(data.length);
+        this.writeArrayToMemory(data, wbuf);
+        // Get the image info, using the raw getinfo
+        let cresult = this.getinfo(wbuf, data.length);
+        let image = JSON.parse(this.UTF8ToString(cresult));
+        this._free(cresult);
+        // If we got an error, no point in decoding
+        if (image.error || image.dataPrecision != 12) {
+          console.log(`Error ${image.error}, JPEG precison ${image.dataPrecision}`);
+          this._free(wbuf);
+          return image;
         }
 
-        JPEG12.onRuntimeInitialized = () => {
+        // Proceed with the decoding using the raw decode
+        let outsize = image.width * image.height * image.numComponents * 2;
+        let outbuffer = this._malloc(outsize);
+        // Decode a few times, in case there is a JIT
+        for (let i=0; i < 10; i++)
+          this._free(this.raw_decode(wbuf, data.length, outbuffer, outsize));
 
-          // buffer, size => json string, could be error message
-          JPEG12.getinfo = JPEG12.cwrap('getinfo', 'number', ['number', 'number']);
+        // bench
+        const count = 1000;
+        let took = performance.now();
+        for (let i = 0; i < count; i++)
+          this._free(this.raw_decode(wbuf, data.length, outbuffer, outsize));
+        took = performance.now() - took;
 
-          // source, sourcesize, dest, destination size -> json string, could be error message
-          JPEG12.raw_decode = JPEG12.cwrap('decode', 'number', ['number', 'number', 'number', 'number']);
+        // Add the time to the document
+        document.getElementById('Result').textContent = `Decoding ${count} times took ${took} ms`;
+        console.log(`Decoding ${count} times took ${took} ms`);
+        cresult = this.raw_decode(wbuf, data.length, outbuffer, outsize);
+        response = this.UTF8ToString(cresult);
+        this._free(cresult);
+        console.log(response);
 
-          // buffer, size => json string, could be error message
-          // JPEG could have large extra chunks before the actual image data
-          JPEG12.getInfo = function (data) {
-            let wbuf = this._malloc(data.length);
-            this.writeArrayToMemory(data, wbuf);
-            cresult = this.getinfo(wbuf, data.length);
-            response = this.UTF8ToString(cresult);
-            console.log(response);
-            this._free(cresult);
-            this._free(wbuf);
-            return JSON.parse(response)
-          }
+        if (response.error) { // Error decoding
+          console.log(response.message);
+          this._free(wbuf);
+          this._free(outbuffer);
+          return response;
+        }
+        // Make a copy of the array
+        data = new Uint16Array(this.HEAPU16.buffer, outbuffer, outsize / 2);
+        image.data = new Uint16Array(data); // copy
+        this._free(outbuffer);
+        this._free(wbuf);
+        return image;
+      }
 
-          JPEG12.decode = function (data) {
-            let wbuf = this._malloc(data.length);
-            this.writeArrayToMemory(data, wbuf);
-            // Get the image info, using the raw getinfo
-            let cresult = this.getinfo(wbuf, data.length);
-            let image = JSON.parse(this.UTF8ToString(cresult));
-            this._free(cresult);
-            // If we got an error, no point in decoding
-            if (image.error || image.dataPrecision != 12) {
-              console.log(`Error ${image.error}, JPEG precison ${image.dataPrecision}`);
-              this._free(wbuf);
-              return image;
-            }
+      refresh();
+    }
 
-            // Proceed with the decoding using the raw decode
-            let outsize = image.width * image.height * image.numComponents * 2;
-            let outbuffer = this._malloc(outsize);
-            // Decode a few times, in case there is a JIT
-            for (let i=0; i < 10; i++)
-              this._free(this.raw_decode(wbuf, data.length, outbuffer, outsize));
+    async function refresh() {
+      try {
+        // Sample JPEG12 tile
+        const url = "11804";
+        let result = await fetch(url);
+        let data = await result.arrayBuffer();
+        data = new Uint8Array(data);
+        image = JPEG12.decode(data);
+        if (image.error)
+          throw new Error(image.error);
 
-            // bench
-            let count = 1000;
-            let took = performance.now();
-            for (let i = 0; i < count; i++)
-              this._free(this.raw_decode(wbuf, data.length, outbuffer, outsize));
-            took = performance.now() - took;
-
-            // Add the time to the document
-            document.getElementById('Result').textContent = `Decoding ${count} times took ${took} ms`;
-            console.log(`Decoding ${count} times took ${took} ms`);
-            cresult = this.raw_decode(wbuf, data.length, outbuffer, outsize);
-            response = this.UTF8ToString(cresult);
-            this._free(cresult);
-            console.log(response);
-
-            if (response.error) { // Error decoding
-              console.log(response.message);
-              this._free(wbuf);
-              this._free(outbuffer);
-              return response;
-            }
-            // Make a copy of the array
-            data = new Uint16Array(this.HEAPU16.buffer, outbuffer, outsize / 2);
-            image.data = new Uint16Array(data); // copy
-            this._free(outbuffer);
-            this._free(wbuf);
-            return image;
-          }
-
-          refresh();
+        // Prove it
+        vmin = vmax = image.data[0]
+        for (i = 0; i < image.data.length; i++) {
+          if (vmin > image.data[i])
+            vmin = image.data[i];
+          if (vmax < image.data[i])
+            vmax = image.data[i];
         }
 
-        async function refresh() {
-          try {
-            // Sample JPEG12 tile
-            let url = "11804";
-            
-            let result = undefined;
-            try {
-              result = await fetch(url);
-            } catch (e) {
-              console.log(e.message);
-              return;
-            }
-            // If we got an error, no point in decoding
-            if (!result.ok)
-              return scrabmle();
-
-            let data = await result.arrayBuffer();
-            data = new Uint8Array(data);
-            // image = JPEG12.getInfo(data);
-            image = JPEG12.decode(data);
-            if (image.error)
-              throw new Error(image.error);
-
-            // Prove it
-            vmin = vmax = image.data[0]
-            for (i = 0; i < image.data.length; i++) {
-              if (vmin > image.data[i])
-                vmin = image.data[i];
-              if (vmax < image.data[i])
-                vmax = image.data[i];
-            }
-
-            console.log(`Min ${vmin} Max ${vmax}`);
-            image.min = vmin;
-            image.max = vmax;
-            display(image);
-          } catch (e) {
-            console.log(e.message);
-          }
-        }
-    </script>
+        console.log(`Min ${vmin} Max ${vmax}`);
+        image.min = vmin;
+        image.max = vmax;
+        display(image);
+      } catch (e) {
+        console.log(e.message);
+      }
+    }
+  </script>
 </body>
 </html>
