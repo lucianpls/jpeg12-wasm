@@ -117,13 +117,13 @@
             let outbuffer = this._malloc(outsize);
             // Decode a few times, in case there is a JIT
             for (let i=0; i < 10; i++)
-              cresult = this.raw_decode(wbuf, data.length, outbuffer, outsize);
+              this._free(this.raw_decode(wbuf, data.length, outbuffer, outsize));
 
             // bench
             let count = 1000;
             let took = performance.now();
             for (let i = 0; i < count; i++)
-              cresult = this.raw_decode(wbuf, data.length, outbuffer, outsize);
+              this._free(this.raw_decode(wbuf, data.length, outbuffer, outsize));
             took = performance.now() - took;
 
             // Add the time to the document
@@ -131,6 +131,7 @@
             console.log(`Decoding ${count} times took ${took} ms`);
             cresult = this.raw_decode(wbuf, data.length, outbuffer, outsize);
             response = this.UTF8ToString(cresult);
+            this._free(cresult);
             console.log(response);
 
             if (response.error) { // Error decoding
