@@ -151,30 +151,6 @@
           refresh();
         }
 
-        // 
-        async function zoom() {
-          if (!displayZone.ctx)
-            return;
-          let level = document.getElementById('Level').value;
-          let oldZoom = displayZone.zoom;
-          displayZone.zoom = level;
-          let zoom_factor = 2 ** (level - oldZoom);
-          // Adjust the row and column values
-          let rowInput = document.getElementById('Row');
-          let columnInput = document.getElementById('Column');
-          rowInput.value = Math.floor(rowInput.value * zoom_factor);
-          columnInput.value = Math.floor(columnInput.value * zoom_factor);
-          return refresh();
-        }
-
-        async function scramble() {
-          let rowInput = document.getElementById('Row');
-          let columnInput = document.getElementById('Column');
-          rowInput.value = Math.floor(Math.random() * rowInput.max);
-          columnInput.value = Math.floor(Math.random() * columnInput.max);
-          refresh();
-        }
-
         async function refresh() {
           try {
             // Sample JPEG12 tile
@@ -185,7 +161,6 @@
               result = await fetch(url);
             } catch (e) {
               console.log(e.message);
-              scramble();
               return;
             }
             // If we got an error, no point in decoding
@@ -196,8 +171,6 @@
             data = new Uint8Array(data);
             // image = JPEG12.getInfo(data);
             image = JPEG12.decode(data);
-            // If image.needs_ndv is true, Lerc.decode 
-            // will needs to use the second parameter as no data value
             if (image.error)
               throw new Error(image.error);
 
@@ -209,22 +182,15 @@
               if (vmax < image.data[i])
                 vmax = image.data[i];
             }
-            
-            // autopan until we get something
-            if (vmin == vmax)
-              return scramble();
 
             console.log(`Min ${vmin} Max ${vmax}`);
             image.min = vmin;
             image.max = vmax;
             display(image);
-
           } catch (e) {
             console.log(e.message);
           }
         }
-
-
     </script>
 </body>
 </html>
