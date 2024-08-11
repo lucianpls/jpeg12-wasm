@@ -266,13 +266,10 @@ static boolean zenChunkHandler(j_decompress_ptr cinfo)
 template <typename T>
 static void apply_mask(BitMap2D<uint64_t> &mask, T *s, int nc)
 {
-    int w = mask.getWidth();
-    int h = mask.getHeight();
-
     if (nc == 1)
     {
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++)
+        for (int y = 0; y < mask.getHeight(); y++)
+            for (int x = 0; x < mask.getWidth(); x++)
             {
                 if (mask.isSet(x, y))
                 { // Non zero pixel
@@ -289,8 +286,8 @@ static void apply_mask(BitMap2D<uint64_t> &mask, T *s, int nc)
         return;
     }
 
-    for (int y = 0; y < h; y++)
-        for (int x = 0; x < w; x++)
+    for (int y = 0; y < mask.getHeight(); y++)
+        for (int x = 0; x < mask.getWidth(); x++)
         {
             if (mask.isSet(x, y))
             { // Non zero pixel
@@ -316,7 +313,8 @@ static void applyZenChunk(const jpeginfo &info, const JPG12Handle &handle, uint1
     bm.set_packer(&packer);
     storage_manager src = {
         reinterpret_cast<char *>(handle.zenChunk.buffer),
-        handle.zenChunk.size};
+        handle.zenChunk.size
+    };
 
     // load and apply the mask
     if (bm.load(&src))
@@ -346,7 +344,7 @@ char *decode(uint8_t *jpeg12, size_t size, uint16_t *output, size_t outsize)
     {
         json j = {{"error", info.error}};
         return strdup(j.dump().c_str());
-    };
+    }
 
     // Check that the size matches expectations
     size_t expected_size = info.width * info.height * info.num_components * 2;
@@ -431,7 +429,8 @@ char *decode(uint8_t *jpeg12, size_t size, uint16_t *output, size_t outsize)
         {"width", info.width},
         {"height", info.height},
         {"numComponents", info.num_components},
-        {"dataPrecision", info.data_precision}};
+        {"dataPrecision", info.data_precision}
+    };
 
 #ifndef IGNORE_ZEN_CHUNK
     // Flag the caller that the zen chunk was detected and processed
